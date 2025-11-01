@@ -19,15 +19,8 @@ services:
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
       - BETTER_AUTH_URL=${BETTER_AUTH_URL}
     depends_on:
-      backend:
-        condition: service_healthy
+      - backend
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:3000/ || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 90s
 
   backend:
     build:
@@ -38,17 +31,14 @@ services:
     container_name: supoclip-backend
     platform: linux/amd64
     working_dir: /app
-    command: [".venv/bin/python", "-m", "uvicorn", "src.main_refactored:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    # CORREÇÃO: comando baseado no Stack Overflow
+    command: ["sh", "-c", "cd /app && .venv/bin/python -m uvicorn src.main_refactored:app --host 0.0.0.0 --port 8000 --reload"]
     ports:
       - "8081:8000"
     volumes:
-      - ./backend/src:/app/src
-      - uploads:/app/uploads
-      - clips:/app/clips
-      - ./backend/fonts:/app/fonts
-      - ./backend/transitions:/app/transitions
+      - ./backend:/app  # MUDANÇA: mapear todo o backend
     environment:
-      - PYTHONPATH=/app
+      - PYTHONPATH=/app:/app/src  # MUDANÇA: adicionar /app/src ao PYTHONPATH
       - PYTHONUNBUFFERED=1
       - DATABASE_URL=${DATABASE_URL}
       - TEMP_DIR=/app/uploads
@@ -62,14 +52,7 @@ services:
       - WHISPER_MODEL_SIZE=${WHISPER_MODEL_SIZE:-medium}
     restart: unless-stopped
     depends_on:
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 90s
+      - redis
 
   worker:
     build:
@@ -86,15 +69,12 @@ services:
           memory: 2G
         reservations:
           memory: 512M
-    command: [".venv/bin/python", "-m", "arq", "src.workers.tasks.WorkerSettings"]
+    # CORREÇÃO: comando baseado no Stack Overflow
+    command: ["sh", "-c", "cd /app && .venv/bin/python -m arq src.workers.tasks.WorkerSettings"]
     volumes:
-      - ./backend/src:/app/src
-      - uploads:/app/uploads
-      - clips:/app/clips
-      - ./backend/fonts:/app/fonts
-      - ./backend/transitions:/app/transitions
+      - ./backend:/app  # MUDANÇA: mapear todo o backend
     environment:
-      - PYTHONPATH=/app
+      - PYTHONPATH=/app:/app/src  # MUDANÇA: adicionar /app/src ao PYTHONPATH
       - PYTHONUNBUFFERED=1
       - DATABASE_URL=${DATABASE_URL}
       - TEMP_DIR=/app/uploads
@@ -108,10 +88,8 @@ services:
       - WHISPER_MODEL_SIZE=${WHISPER_MODEL_SIZE:-medium}
     restart: unless-stopped
     depends_on:
-      redis:
-        condition: service_healthy
-      backend:
-        condition: service_healthy
+      - redis
+      - backend
 
   redis:
     image: redis:7.4-alpine
@@ -121,11 +99,6 @@ services:
     volumes:
       - redis_data:/data
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
 volumes:
   uploads:
