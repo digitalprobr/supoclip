@@ -12,36 +12,35 @@ services:
       - ./frontend/public:/app/public
       - ./frontend/prisma:/app/prisma
     environment:
-      - NODE_ENV=development
+      - NODE_ENV=production
       - NEXT_TELEMETRY_DISABLED=1
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
-      - DATABASE_URL=postgresql://supoclip:supoclip_password@postgres:5432/supoclip
-      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-supoclip_dev_secret_change_in_production}
-      - BETTER_AUTH_URL=http://localhost:3000
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+      - DATABASE_URL=${DATABASE_URL}
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
+      - BETTER_AUTH_URL=${BETTER_AUTH_URL}
     depends_on:
-      postgres:
-        condition: service_healthy
       backend:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 60s
+      start_period: 90s
 
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
       platforms:
-        - linux/amd64  # Force x86_64 for MediaPipe compatibility
+        - linux/amd64
     container_name: supoclip-backend
     platform: linux/amd64
-    command: [".venv/bin/uvicorn", "src.main_refactored:app", "--host", "0.0.0.0", "--port", "8000"]
+    working_dir: /app
+    command: [".venv/bin/python", "-m", "uvicorn", "src.main_refactored:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     ports:
-      - "8000:8000"
+      - "8081:8000"
     volumes:
       - ./backend/src:/app/src
       - uploads:/app/uploads
@@ -51,7 +50,7 @@ services:
     environment:
       - PYTHONPATH=/app
       - PYTHONUNBUFFERED=1
-      - DATABASE_URL=postgresql+asyncpg://supoclip:supoclip_password@postgres:5432/supoclip
+      - DATABASE_URL=${DATABASE_URL}
       - TEMP_DIR=/app/uploads
       - REDIS_HOST=redis
       - REDIS_PORT=6379
@@ -63,18 +62,15 @@ services:
       - WHISPER_MODEL_SIZE=${WHISPER_MODEL_SIZE:-medium}
     restart: unless-stopped
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 60s
+      start_period: 90s
 
-  # Worker process for background video processing
   worker:
     build:
       context: ./backend
@@ -83,7 +79,14 @@ services:
         - linux/amd64
     container_name: supoclip-worker
     platform: linux/amd64
-    command: [".venv/bin/arq", "src.workers.tasks.WorkerSettings"]
+    working_dir: /app
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
+    command: [".venv/bin/python", "-m", "arq", "src.workers.tasks.WorkerSettings"]
     volumes:
       - ./backend/src:/app/src
       - uploads:/app/uploads
@@ -93,7 +96,7 @@ services:
     environment:
       - PYTHONPATH=/app
       - PYTHONUNBUFFERED=1
-      - DATABASE_URL=postgresql+asyncpg://supoclip:supoclip_password@postgres:5432/supoclip
+      - DATABASE_URL=${DATABASE_URL}
       - TEMP_DIR=/app/uploads
       - REDIS_HOST=redis
       - REDIS_PORT=6379
@@ -105,16 +108,13 @@ services:
       - WHISPER_MODEL_SIZE=${WHISPER_MODEL_SIZE:-medium}
     restart: unless-stopped
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
       backend:
         condition: service_healthy
 
-  # Redis for caching and job queues (useful for video processing)
   redis:
-    image: redis:7-alpine
+    image: redis:7.4-alpine
     container_name: supoclip-redis
     ports:
       - "6379:6379"
@@ -127,34 +127,12 @@ services:
       timeout: 10s
       retries: 3
 
-  # PostgreSQL database for storing video metadata, user data, etc.
-  postgres:
-    image: postgres:15-alpine
-    container_name: supoclip-postgres
-    environment:
-      POSTGRES_DB: supoclip
-      POSTGRES_USER: supoclip
-      POSTGRES_PASSWORD: supoclip_password
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U supoclip -d supoclip"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
 volumes:
   uploads:
     driver: local
   clips:
     driver: local
   redis_data:
-    driver: local
-  postgres_data:
     driver: local
 
 networks:
