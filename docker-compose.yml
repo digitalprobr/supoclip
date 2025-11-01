@@ -31,14 +31,14 @@ services:
     container_name: supoclip-backend
     platform: linux/amd64
     working_dir: /app
-    # CORREÇÃO: comando baseado no Stack Overflow
-    command: ["sh", "-c", "cd /app && .venv/bin/python -m uvicorn src.main_refactored:app --host 0.0.0.0 --port 8000 --reload"]
+    # TENTATIVA 1: main.py ao invés de main_refactored.py
+    command: ["sh", "-c", "cd /app && ls -la src/ && .venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload"]
     ports:
       - "8081:8000"
     volumes:
-      - ./backend:/app  # MUDANÇA: mapear todo o backend
+      - ./backend:/app
     environment:
-      - PYTHONPATH=/app:/app/src  # MUDANÇA: adicionar /app/src ao PYTHONPATH
+      - PYTHONPATH=/app
       - PYTHONUNBUFFERED=1
       - DATABASE_URL=${DATABASE_URL}
       - TEMP_DIR=/app/uploads
@@ -69,12 +69,11 @@ services:
           memory: 2G
         reservations:
           memory: 512M
-    # CORREÇÃO: comando baseado no Stack Overflow
     command: ["sh", "-c", "cd /app && .venv/bin/python -m arq src.workers.tasks.WorkerSettings"]
     volumes:
-      - ./backend:/app  # MUDANÇA: mapear todo o backend
+      - ./backend:/app
     environment:
-      - PYTHONPATH=/app:/app/src  # MUDANÇA: adicionar /app/src ao PYTHONPATH
+      - PYTHONPATH=/app
       - PYTHONUNBUFFERED=1
       - DATABASE_URL=${DATABASE_URL}
       - TEMP_DIR=/app/uploads
