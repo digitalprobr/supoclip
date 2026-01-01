@@ -6,21 +6,30 @@ services:
       target: development
     container_name: supoclip-frontend
     ports:
-      - "3000:3000"
+      - '3000:3000'
     volumes:
-      - ./frontend/src:/app/src
-      - ./frontend/public:/app/public
-      - ./frontend/prisma:/app/prisma
+      - './frontend/src:/app/src'
+      - './frontend/public:/app/public'
+      - './frontend/prisma:/app/prisma'
     environment:
       - NODE_ENV=production
       - NEXT_TELEMETRY_DISABLED=1
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
-      - DATABASE_URL=${DATABASE_URL}
-      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
-      - BETTER_AUTH_URL=${BETTER_AUTH_URL}
+      - 'NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}'
+      - 'DATABASE_URL=${DATABASE_URL}'
+      - 'BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}'
+      - 'BETTER_AUTH_URL=${BETTER_AUTH_URL}'
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - 'curl -f http://localhost:3000/ || exit 1'
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
 
   backend:
     build:
@@ -30,29 +39,47 @@ services:
         - linux/amd64
     container_name: supoclip-backend
     platform: linux/amd64
-    working_dir: /app
-    # TENTATIVA 1: main.py ao invés de main_refactored.py
-    command: ["sh", "-c", "cd /app && ls -la src/ && .venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload"]
+    # CORREÇÃO: Removido "src." do comando pois o PYTHONPATH aponta para /app/src
+    command:
+      - .venv/bin/uvicorn
+      - 'main_refactored:app'
+      - '--host'
+      - 0.0.0.0
+      - '--port'
+      - '8000'
     ports:
-      - "8081:8000"
+      - '8081:8000'
     volumes:
-      - ./backend:/app
+      - './backend/src:/app/src'
+      - 'uploads:/app/uploads'
+      - 'clips:/app/clips'
+      - './backend/fonts:/app/fonts'
+      - './backend/transitions:/app/transitions'
     environment:
-      - PYTHONPATH=/app
+      - PYTHONPATH=/app/src
       - PYTHONUNBUFFERED=1
-      - DATABASE_URL=${DATABASE_URL}
+      - 'DATABASE_URL=${DATABASE_URL}'
       - TEMP_DIR=/app/uploads
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - ASSEMBLY_AI_API_KEY=${ASSEMBLY_AI_API_KEY}
-      - LLM=${LLM:-openai:gpt-4}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - WHISPER_MODEL_SIZE=${WHISPER_MODEL_SIZE:-medium}
+      - 'ASSEMBLY_AI_API_KEY=${ASSEMBLY_AI_API_KEY}'
+      - 'LLM=${LLM:-openai:gpt-4}'
+      - 'OPENAI_API_KEY=${OPENAI_API_KEY}'
+      - 'GOOGLE_API_KEY=${GOOGLE_API_KEY}'
+      - 'ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}'
+      - 'WHISPER_MODEL_SIZE=${WHISPER_MODEL_SIZE:-medium}'
     restart: unless-stopped
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - 'curl -f http://localhost:8000/health || exit 1'
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
 
   worker:
     build:
@@ -62,42 +89,58 @@ services:
         - linux/amd64
     container_name: supoclip-worker
     platform: linux/amd64
-    working_dir: /app
     deploy:
       resources:
         limits:
           memory: 2G
         reservations:
           memory: 512M
-    command: ["sh", "-c", "cd /app && .venv/bin/python -m arq src.workers.tasks.WorkerSettings"]
+    # CORREÇÃO: Removido "src." para alinhar com a nova raiz do PYTHONPATH
+    command:
+      - .venv/bin/arq
+      - workers.tasks.WorkerSettings
     volumes:
-      - ./backend:/app
+      - './backend/src:/app/src'
+      - 'uploads:/app/uploads'
+      - 'clips:/app/clips'
+      - './backend/fonts:/app/fonts'
+      - './backend/transitions:/app/transitions'
     environment:
-      - PYTHONPATH=/app
+      - PYTHONPATH=/app/src
       - PYTHONUNBUFFERED=1
-      - DATABASE_URL=${DATABASE_URL}
+      - 'DATABASE_URL=${DATABASE_URL}'
       - TEMP_DIR=/app/uploads
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - ASSEMBLY_AI_API_KEY=${ASSEMBLY_AI_API_KEY}
-      - LLM=${LLM:-openai:gpt-4}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - WHISPER_MODEL_SIZE=${WHISPER_MODEL_SIZE:-medium}
+      - 'ASSEMBLY_AI_API_KEY=${ASSEMBLY_AI_API_KEY}'
+      - 'LLM=${LLM:-openai:gpt-4}'
+      - 'OPENAI_API_KEY=${OPENAI_API_KEY}'
+      - 'GOOGLE_API_KEY=${GOOGLE_API_KEY}'
+      - 'ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}'
+      - 'WHISPER_MODEL_SIZE=${WHISPER_MODEL_SIZE:-medium}'
     restart: unless-stopped
     depends_on:
-      - redis
-      - backend
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
 
   redis:
-    image: redis:7.4-alpine
+    image: 'redis:7.4-alpine'
     container_name: supoclip-redis
     ports:
-      - "6379:6379"
+      - '6379:6379'
     volumes:
-      - redis_data:/data
+      - 'redis_data:/data'
     restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - ping
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 volumes:
   uploads:
