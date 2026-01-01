@@ -39,7 +39,7 @@ services:
         - linux/amd64
     container_name: supoclip-backend
     platform: linux/amd64
-    # CORREÇÃO: Removido "src." do comando pois o PYTHONPATH aponta para /app/src
+    # CORREÇÃO: Removido 'src.' do módulo para alinhar com o PYTHONPATH=/app/src
     command:
       - .venv/bin/uvicorn
       - 'main_refactored:app'
@@ -95,7 +95,7 @@ services:
           memory: 2G
         reservations:
           memory: 512M
-    # CORREÇÃO: Removido "src." para alinhar com a nova raiz do PYTHONPATH
+    # CORREÇÃO: Removido 'src.' do módulo
     command:
       - .venv/bin/arq
       - workers.tasks.WorkerSettings
